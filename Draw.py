@@ -182,7 +182,7 @@ class HandDetector:
         return fingers
     
     class ShapeObject:
-    """ Represents a floating interactive object """
+        """ Represents a floating interactive object """
     def __init__(self, shape_type, params, color):
         self.type = shape_type 
         self.params = params   
@@ -214,3 +214,67 @@ class HandDetector:
                 # Translate back
                 new_pts.append((int(nx + centroid[0]), int(ny + centroid[1])))
             self.params = new_pts
+
+        def draw(self, img):
+            overlay = img.copy()
+            alpha = 0.4 
+
+            if self.type == 'circle':
+                center, radius = self.params
+                cv2.circle(overlay, center, int(radius), self.color, cv2.FILLED)
+                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+                cv2.circle(img, center, int(radius), self.color, self.thickness)
+                # Add an orientation line so we can see rotation on circles
+                ex = int(center[0] + radius * math.cos(math.radians(self.rotation)))
+                ey = int(center[1] + radius * math.sin(math.radians(self.rotation)))
+                cv2.line(img, center, (ex, ey), (0,0,0), 2)
+
+            elif self.type == 'rect':
+                x, y, w, h = self.params
+                cx, cy = x + w//2, y + h//2
+            
+            # Generate corners relative to center
+                corners = np.array([[-w/2, -h/2], [w/2, -h/2], [w/2, h/2], [-w/2, h/2]])
+            
+            # Rotate
+                rad = math.radians(self.rotation)
+                cos_a, sin_a = math.cos(rad), math.sin(rad)
+                rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+            
+            # Apply rotation and translate back
+                rotated_corners = np.dot(corners, rot_matrix.T) + [cx, cy]
+                pts = rotated_corners.astype(np.int32).reshape((-1, 1, 2))
+
+                cv2.fillPoly(overlay, [pts], self.color)
+                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+                cv2.polylines(img, [pts], True, self.color, self.thickness)
+
+            elif self.type == 'square':
+                x, y, s = self.params
+                cx, cy = x + s//2, y + s//2
+            
+                corners = np.array([[-s/2, -s/2], [s/2, -s/2], [s/2, s/2], [-s/2, s/2]])
+                rad = math.radians(self.rotation)
+                cos_a, sin_a = math.cos(rad), math.sin(rad)
+                rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+            
+                rotated_corners = np.dot(corners, rot_matrix.T) + [cx, cy]
+                pts = rotated_corners.astype(np.int32).reshape((-1, 1, 2))
+
+                cv2.fillPoly(overlay, [pts], self.color)
+                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+                cv2.polylines(img, [pts], True, self.color, self.thickness)
+
+            elif self.type == 'triangle':
+                # Points are already rotated in self.params
+                pts = np.array(self.params, np.int32).reshape((-1, 1, 2))
+                cv2.fillPoly(overlay, [pts], self.color)
+                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+                cv2.polylines(img, [pts], True, self.color, self.thickness)
+
+            elif self.type == 'heart':
+                center, size = self.params
+                t = np.linspace(0, 2 * np.pi, 50)
+                x = 16 * np.sin(t)**3
+                y = -(13 * np.cos(t) - 5 * np.cos(2*t) - 2 * np.cos(3*t) - np.cos(4*t)) 
+                scale = size / 16.0
