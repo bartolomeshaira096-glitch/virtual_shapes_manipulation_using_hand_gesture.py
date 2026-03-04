@@ -123,7 +123,12 @@ class ShapeClassifier:
         if not self.trained: return None, 9999
         feat = self.get_features(contour)
         if feat is None: return None, 9999
-        
+
+        feat_array = np.array([feat], dtype=np.float32)
+        ret, results, neighbours, dist = self.knn.findNearest(feat_array, k=5)
+        confidence_score = np.mean(dist)
+        return int(results[0][0]), confidence_score
+
 clf = ShapeClassifier()
 
 #    STANDARD CANVAS LOGIC
@@ -175,3 +180,37 @@ class HandDetector:
             if lmList[self.tipIds[id]][2] < lmList[self.tipIds[id] - 2][2]: fingers.append(1)
             else: fingers.append(0)
         return fingers
+    
+    class ShapeObject:
+    """ Represents a floating interactive object """
+    def __init__(self, shape_type, params, color):
+        self.type = shape_type 
+        self.params = params   
+        self.color = color
+        self.thickness = 3
+        self.rotation = 0 # Degrees
+
+    def rotate(self, angle):
+        """ Rotate the object. For polygons, rotate points. For geometric shapes, update angle. """
+        if self.type in ['circle', 'rect', 'square', 'heart']:
+            self.rotation += angle
+        elif self.type in ['triangle', 'free']:
+            # For points-based shapes, we rotate the points destructively around the centroid
+            pts = np.array(self.params)
+            centroid = np.mean(pts, axis=0)
+            
+            # Rotation matrix
+            rad = math.radians(angle)
+            cos_a = math.cos(rad)
+            sin_a = math.sin(rad)
+            
+            new_pts = []
+            for p in pts:
+                # Center point
+                px, py = p[0] - centroid[0], p[1] - centroid[1]
+                # Rotate
+                nx = px * cos_a - py * sin_a
+                ny = px * sin_a + py * cos_a
+                # Translate back
+                new_pts.append((int(nx + centroid[0]), int(ny + centroid[1])))
+            self.params = new_pts
