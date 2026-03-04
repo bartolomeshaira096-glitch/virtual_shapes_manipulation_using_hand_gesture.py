@@ -108,6 +108,7 @@ class ShapeClassifier:
             process(pts, 3)
 
         return np.array(samples, dtype=np.float32), np.array(labels, dtype=np.int32)
+    
     def train_model(self):
         train_data, train_labels = np.array([]), []
         try:
@@ -117,15 +118,60 @@ class ShapeClassifier:
         except Exception as e:
            print(f"Failed to train KNN Model: {e}")
            self.trained = False
-
-
+    
     def predict(self, contour):
         if not self.trained: return None, 9999
         feat = self.get_features(contour)
         if feat is None: return None, 9999
         
-        feat_array = np.array([feat], dtype=np.float32)
-        ret, results, neighbours, dist = self.knn.findNearest(feat_array, k=5)
-        confidence_score = np.mean(dist)
-        return int(results[0][0]), confidence_score
+clf = ShapeClassifier()
 
+#    STANDARD CANVAS LOGIC
+
+class HandDetector:
+    def __init__(self, mode=False, maxHands=2, detectionCon=0.7, trackCon=0.5):
+        self.mode = mode
+        self.maxHands = maxHands
+        self.detectionCon = detectionCon
+        self.trackCon = trackCon
+        self.mpHands = mp.solutions.hands
+        self.hands = self.mpHands.Hands(
+            static_image_mode=self.mode,
+            max_num_hands=self.maxHands,
+            min_detection_confidence=self.detectionCon,
+            min_tracking_confidence=self.trackCon
+        )
+        self.mpDraw = mp.solutions.drawing_utils
+        self.tipIds = [4, 8, 12, 16, 20] 
+
+    def findHands(self, img, draw=True):
+        if img is None: return None
+        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        self.results = self.hands.process(imgRGB)
+        if self.results.multi_hand_landmarks:
+            for handLms in self.results.multi_hand_landmarks:
+                if draw:
+                    self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
+        return img
+
+    def findPosition(self, img, handNo=0):
+        lmList = []
+        if img is None: return []
+        if self.results and self.results.multi_hand_landmarks and len(self.results.multi_hand_landmarks) > handNo:
+            myHand = self.results.multi_hand_landmarks[handNo]
+            if not getattr(myHand, 'landmark', None): return []
+            h, w, c = img.shape
+            for id, lm in enumerate(myHand.landmark):
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                lmList.append([id, cx, cy])
+        return lmList
+
+    def fingersUp(self, lmList):
+        fingers = []
+        if len(lmList) < max(self.tipIds) + 1: return []
+        if lmList[self.tipIds[0]][1] < lmList[self.tipIds[0] - 1][1]: fingers.append(1)
+        else: fingers.append(0)
+        for id in range(1, 5):
+            if lmList[self.tipIds[id]][2] < lmList[self.tipIds[id] - 2][2]: fingers.append(1)
+            else: fingers.append(0)
+        return fingers
